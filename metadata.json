@@ -1,0 +1,9 @@
+{
+  "name": "HealthBridge AI",
+  "description": "An accessible, AI-powered health assistant for underserved regions featuring voice symptom triage, record keeping, and smart scheduling.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
