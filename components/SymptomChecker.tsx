@@ -308,6 +308,19 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
              <p className="text-gray-700 bg-gray-50 p-3 rounded-lg whitespace-pre-line">{result.advice}</p>
            </section>
 
+           {/* Translation Link */}
+           {showTranslateButton && (
+             <div className="flex justify-start">
+                <button 
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  className="text-sm text-teal-600 underline hover:text-teal-800 bg-transparent p-0 border-none cursor-pointer flex items-center"
+                >
+                  {isTranslating ? 'Translating...' : (isTranslated ? 'Show Original' : 'Translate to English')}
+                </button>
+             </div>
+           )}
+
            {result.specialistNeeded && (
              <section>
                <h3 className="font-semibold text-gray-900 mb-2">Specialist Suggested</h3>
@@ -316,27 +329,6 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
                   {result.specialistNeeded}
                </div>
              </section>
-           )}
-
-           {/* Translation Button */}
-           {showTranslateButton && (
-             <div className="flex justify-center pt-2">
-                <button 
-                  onClick={handleTranslate}
-                  disabled={isTranslating}
-                  className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full text-sm font-bold flex items-center hover:bg-indigo-100 transition"
-                >
-                  {isTranslating ? (
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
-                  )}
-                  {isTranslated ? 'Show Original' : 'Translate to English'}
-                </button>
-             </div>
            )}
 
            <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
