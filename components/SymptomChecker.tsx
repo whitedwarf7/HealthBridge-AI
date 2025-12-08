@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { analyzeSymptoms, findNearbyDoctors, PlaceResult } from '../services/geminiService';
-import { TriageResponse } from '../types';
+import { analyzeSymptoms, findNearbyDoctors, PlaceResult, translateTriage } from '../services/geminiService';
+import { TriageResponse, UserProfile } from '../types';
 
 interface SymptomCheckerProps {
   onBack: () => void;
+  userProfile?: UserProfile;
 }
 
-export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
+export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProfile }) => {
   const [text, setText] = useState('');
   const [severity, setSeverity] = useState(5);
   const [isRecording, setIsRecording] = useState(false);
@@ -15,11 +16,24 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<TriageResponse | null>(null);
+  
+  // Results and Translation State
+  const [originalResult, setOriginalResult] = useState<TriageResponse | null>(null);
+  const [translatedResult, setTranslatedResult] = useState<TriageResponse | null>(null);
+  const [isTranslated, setIsTranslated] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  // Computed current result based on toggle
+  const result = isTranslated && translatedResult ? translatedResult : originalResult;
   
   // Doctor Search State
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
   const [doctorResults, setDoctorResults] = useState<{ text: string, places: PlaceResult[] } | null>(null);
+  
+  // Search Filters
+  const [searchSpecialty, setSearchSpecialty] = useState('');
+  const [searchRadius, setSearchRadius] = useState('5');
+  const [searchOpenNow, setSearchOpenNow] = useState(true);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -34,6 +48,15 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
       }
     };
   }, []);
+
+  // Update specialty filter when result changes
+  useEffect(() => {
+    if (result?.specialistNeeded) {
+      setSearchSpecialty(result.specialistNeeded);
+    } else {
+      setSearchSpecialty('General Practitioner');
+    }
+  }, [result]);
 
   // --- Voice Recording Logic ---
   const startRecording = async () => {
@@ -133,14 +156,44 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
         });
       }
 
-      const response = await analyzeSymptoms(text, imagePreviews, audioBase64, severity);
-      setResult(response);
+      const response = await analyzeSymptoms(text, imagePreviews, audioBase64, severity, userProfile);
+      setOriginalResult(response);
+      setTranslatedResult(null);
+      setIsTranslated(false);
 
     } catch (error) {
       console.error(error);
       alert("Something went wrong during analysis.");
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (isTranslated) {
+      // Revert to original
+      setIsTranslated(false);
+      return;
+    }
+
+    if (translatedResult) {
+      // Use cached translation
+      setIsTranslated(true);
+      return;
+    }
+
+    if (!originalResult) return;
+
+    setIsTranslating(true);
+    try {
+      const translated = await translateTriage(originalResult);
+      setTranslatedResult(translated);
+      setIsTranslated(true);
+    } catch (e) {
+      console.error(e);
+      alert("Translation failed");
+    } finally {
+      setIsTranslating(false);
     }
   };
 
@@ -155,8 +208,13 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
     setAudioBlob(null);
     setImageFiles([]);
     setImagePreviews([]);
-    setResult(null);
+    setOriginalResult(null);
+    setTranslatedResult(null);
+    setIsTranslated(false);
     setDoctorResults(null);
+    setSearchSpecialty('');
+    setSearchRadius('5');
+    setSearchOpenNow(true);
   };
 
   const handleFindDoctor = () => {
@@ -170,8 +228,14 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        const specialist = result?.specialistNeeded || 'doctor';
-        const searchResult = await findNearbyDoctors(latitude, longitude, specialist);
+        // Use user selected filters
+        const searchResult = await findNearbyDoctors(
+            latitude, 
+            longitude, 
+            searchSpecialty,
+            searchRadius,
+            searchOpenNow
+        );
         setDoctorResults(searchResult);
         setIsLoadingDoctors(false);
       },
@@ -184,7 +248,7 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
   };
 
   // --- Render Result View ---
-  if (result) {
+  if (result && originalResult) {
     const getSeverityColor = (sev: string) => {
       switch(sev) {
         case 'LOW': return 'bg-green-100 text-green-800 border-green-200';
@@ -194,6 +258,9 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
         default: return 'bg-gray-100 text-gray-800';
       }
     };
+    
+    // Check if detected language is not English to show button, or always show for safety.
+    const showTranslateButton = originalResult.detectedLanguage && originalResult.detectedLanguage.toLowerCase() !== 'english';
 
     return (
       <div className="p-4 bg-white min-h-full pb-20">
@@ -221,7 +288,16 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
             </div>
          </div>
 
-         <div className="space-y-6">
+         <div className="space-y-6 relative">
+           {/* Detected Language Badge */}
+           {originalResult.detectedLanguage && (
+             <div className="flex justify-end">
+               <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full border border-gray-200">
+                 Detected: {originalResult.detectedLanguage}
+               </span>
+             </div>
+           )}
+
            <section>
              <h3 className="font-semibold text-gray-900 mb-2">Summary</h3>
              <p className="text-gray-700 bg-gray-50 p-3 rounded-lg">{result.summary}</p>
@@ -242,12 +318,80 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
              </section>
            )}
 
-            {/* Doctor Search Section */}
-            {!doctorResults ? (
-               <button 
+           {/* Translation Button */}
+           {showTranslateButton && (
+             <div className="flex justify-center pt-2">
+                <button 
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full text-sm font-bold flex items-center hover:bg-indigo-100 transition"
+                >
+                  {isTranslating ? (
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                  )}
+                  {isTranslated ? 'Show Original' : 'Translate to English'}
+                </button>
+             </div>
+           )}
+
+           <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+             <h3 className="font-bold text-gray-900 mb-4 flex items-center">
+               <svg className="w-5 h-5 mr-2 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+               Find Care Nearby
+             </h3>
+
+             {/* Search Filters */}
+             <div className="space-y-3 mb-4">
+               <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase">Specialist / Search Term</label>
+                  <input 
+                    type="text" 
+                    value={searchSpecialty}
+                    onChange={(e) => setSearchSpecialty(e.target.value)}
+                    className="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white"
+                    placeholder="e.g. Cardiologist, Pharmacy"
+                  />
+               </div>
+               
+               <div className="flex gap-3">
+                 <div className="flex-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase">Distance</label>
+                    <select 
+                      value={searchRadius}
+                      onChange={(e) => setSearchRadius(e.target.value)}
+                      className="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 bg-white"
+                    >
+                      <option value="5">5 km</option>
+                      <option value="10">10 km</option>
+                      <option value="25">25 km</option>
+                      <option value="50">50 km</option>
+                    </select>
+                 </div>
+                 
+                 <div className="flex-1 flex flex-col justify-end">
+                    <label className="flex items-center space-x-2 cursor-pointer p-2 border border-gray-300 rounded-lg h-[38px] hover:bg-gray-50 bg-white">
+                       <input 
+                         type="checkbox" 
+                         checked={searchOpenNow}
+                         onChange={(e) => setSearchOpenNow(e.target.checked)}
+                         className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500 bg-white border-gray-300"
+                       />
+                       <span className="text-sm font-medium text-gray-700">Open Now Only</span>
+                    </label>
+                 </div>
+               </div>
+             </div>
+
+              {/* Action Button */}
+             <button 
                 onClick={handleFindDoctor}
                 disabled={isLoadingDoctors}
-                className="w-full bg-teal-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-teal-700 transition flex justify-center items-center"
+                className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold text-base shadow hover:bg-teal-700 transition flex justify-center items-center"
               >
                 {isLoadingDoctors ? (
                   <>
@@ -255,17 +399,20 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Finding Nearby Help...
+                      Searching...
                   </>
                 ) : (
-                  'Find a Doctor Now'
+                  'Search'
                 )}
               </button>
-            ) : (
+           </section>
+
+            {/* Doctor Search Results */}
+            {doctorResults && (
               <section className="bg-gray-50 p-4 rounded-xl border border-gray-200 animate-fade-in">
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center">
                    <svg className="w-5 h-5 mr-2 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
-                   Nearby Locations
+                   Results for "{searchSpecialty}"
                 </h3>
                 
                 {/* Fallback Text if parsed places is empty but text exists */}
@@ -354,6 +501,11 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
           <p className="text-gray-500 text-sm max-w-xs mx-auto">
             Describe your symptoms. You can speak, type, or upload a photo of the problem.
           </p>
+          {userProfile && (
+             <p className="text-xs text-teal-600 font-medium">
+               Personalized for: {userProfile.name} ({userProfile.age}y, {userProfile.gender})
+             </p>
+          )}
         </div>
 
         {/* Inputs */}
@@ -405,7 +557,7 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Or type details:</label>
             <textarea
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none resize-none"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none resize-none bg-white"
               rows={3}
               placeholder="e.g. I have a headache and fever since yesterday..."
               value={text}

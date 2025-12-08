@@ -2,8 +2,15 @@ export enum AppView {
   DASHBOARD = 'DASHBOARD',
   SYMPTOM_CHECKER = 'SYMPTOM_CHECKER',
   RECORDS = 'RECORDS',
-  APPOINTMENTS = 'APPOINTMENTS',
   PROFILE = 'PROFILE'
+}
+
+export interface UserProfile {
+  name: string;
+  age: string;
+  gender: string;
+  preExistingConditions: string;
+  allergies: string;
 }
 
 export interface SymptomReport {
@@ -32,14 +39,6 @@ export interface HealthRecord {
   medicines?: Medicine[];
 }
 
-export interface Appointment {
-  id: string;
-  doctorName: string;
-  specialty: string;
-  date: Date;
-  status: 'CONFIRMED' | 'PENDING' | 'COMPLETED';
-}
-
 export interface TriageResponse {
   summary: string;
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'EMERGENCY';
@@ -47,4 +46,13 @@ export interface TriageResponse {
   recommendedAction: string;
   specialistNeeded?: string;
   emergencyNumber?: string;
+  detectedLanguage?: string;
+}
+
+export interface Appointment {
+  id: string;
+  doctorName: string;
+  specialty: string;
+  date: Date;
+  status: 'CONFIRMED' | 'PENDING' | 'CANCELLED';
 }

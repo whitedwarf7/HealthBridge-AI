@@ -3,20 +3,10 @@ import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { SymptomChecker } from './components/SymptomChecker';
 import { HealthRecords } from './components/HealthRecords';
-import { Appointments } from './components/Appointments';
-import { AppView, Appointment, HealthRecord } from './types';
+import { UserProfileView } from './components/UserProfile';
+import { AppView, HealthRecord, UserProfile } from './types';
 
 // Mock Data
-const MOCK_APPOINTMENTS: Appointment[] = [
-  {
-    id: '1',
-    doctorName: 'Dr. Sarah M.',
-    specialty: 'General Practitioner',
-    date: new Date(Date.now() + 86400000 * 2), // 2 days from now
-    status: 'CONFIRMED'
-  }
-];
-
 const MOCK_RECORDS: HealthRecord[] = [
   {
     id: '1',
@@ -31,23 +21,41 @@ const MOCK_RECORDS: HealthRecord[] = [
   }
 ];
 
+const DEFAULT_PROFILE: UserProfile = {
+  name: 'John Doe',
+  age: '35',
+  gender: 'Male',
+  preExistingConditions: '',
+  allergies: ''
+};
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
-  const [appointments, setAppointments] = useState<Appointment[]>(MOCK_APPOINTMENTS);
   const [records, setRecords] = useState<HealthRecord[]>(MOCK_RECORDS);
+  const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+
+  const handleDeleteRecord = (id: string) => {
+    setRecords(prev => prev.filter(r => r.id !== id));
+  };
 
   const renderView = () => {
     switch (currentView) {
       case AppView.DASHBOARD:
-        return <Dashboard onChangeView={setCurrentView} appointments={appointments} />;
+        return <Dashboard onChangeView={setCurrentView} />;
       case AppView.SYMPTOM_CHECKER:
-        return <SymptomChecker onBack={() => setCurrentView(AppView.DASHBOARD)} />;
+        return <SymptomChecker onBack={() => setCurrentView(AppView.DASHBOARD)} userProfile={userProfile} />;
       case AppView.RECORDS:
-        return <HealthRecords records={records} addRecord={(rec) => setRecords(prev => [rec, ...prev])} />;
-      case AppView.APPOINTMENTS:
-        return <Appointments appointments={appointments} />;
+        return (
+          <HealthRecords 
+            records={records} 
+            addRecord={(rec) => setRecords(prev => [rec, ...prev])} 
+            deleteRecord={handleDeleteRecord}
+          />
+        );
+      case AppView.PROFILE:
+        return <UserProfileView profile={userProfile} onSave={setUserProfile} />;
       default:
-        return <Dashboard onChangeView={setCurrentView} appointments={appointments} />;
+        return <Dashboard onChangeView={setCurrentView} />;
     }
   };
 

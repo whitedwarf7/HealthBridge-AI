@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { TriageResponse, HealthRecord } from '../types';
+import { TriageResponse, HealthRecord, UserProfile } from '../types';
 
 // Initialize Gemini
 // NOTE: In a production environment for underserved regions, we would likely proxy this 
@@ -12,21 +12,27 @@ export const analyzeSymptoms = async (
   textInput: string, 
   imageParts: string[] = [], 
   audioPart: string | null = null,
-  severityLevel: number = 0
+  severityLevel: number = 0,
+  userProfile?: UserProfile
 ): Promise<TriageResponse> => {
   
   const parts: any[] = [];
 
-  // Add text with severity context
-  let combinedText = textInput;
-  if (severityLevel > 0) {
-    const severityContext = `User self-reported severity level: ${severityLevel}/10.`;
-    combinedText = combinedText ? `${combinedText}\n\n${severityContext}` : severityContext;
+  // Build Context String
+  let contextParts = [];
+  
+  if (userProfile) {
+    contextParts.push(`PATIENT PROFILE:\n- Name: ${userProfile.name}\n- Age: ${userProfile.age}\n- Gender: ${userProfile.gender}\n- Pre-existing Conditions: ${userProfile.preExistingConditions}\n- Allergies: ${userProfile.allergies}`);
   }
 
-  if (combinedText) {
-    parts.push({ text: combinedText });
+  if (severityLevel > 0) {
+    contextParts.push(`USER REPORTED SEVERITY: ${severityLevel}/10`);
   }
+
+  contextParts.push(`SYMPTOMS DESCRIPTION: ${textInput}`);
+
+  const combinedText = contextParts.join('\n\n');
+  parts.push({ text: combinedText });
 
   // Add images (base64)
   imageParts.forEach(img => {
@@ -60,7 +66,8 @@ export const analyzeSymptoms = async (
       advice: { type: Type.STRING, description: "Immediate self-care advice or next steps. Keep it simple and actionable." },
       recommendedAction: { type: Type.STRING, description: "One of: 'Home Care', 'Visit Pharmacy', 'See Doctor', 'Go to Hospital'." },
       specialistNeeded: { type: Type.STRING, description: "If a doctor is needed, what kind? e.g. 'General Practitioner', 'Dermatologist'." },
-      emergencyNumber: { type: Type.STRING, description: "The local emergency phone number (e.g. 911, 112, 999) if severity is EMERGENCY. Default to '112' if unknown." }
+      emergencyNumber: { type: Type.STRING, description: "The local emergency phone number (e.g. 911, 112, 999) if severity is EMERGENCY. Default to '112' if unknown." },
+      detectedLanguage: { type: Type.STRING, description: "The language detected from the user input (e.g., 'Spanish', 'Hindi', 'English')." }
     },
     required: ["summary", "severity", "advice", "recommendedAction"],
   };
@@ -72,11 +79,18 @@ export const analyzeSymptoms = async (
       config: {
         systemInstruction: `You are HealthBridge, a compassionate medical triage assistant for patients in underserved regions. 
         Analyze the provided symptoms (text, voice audio, or images of physical conditions).
+        
+        CRITICAL INSTRUCTION:
+        1. Detect the language used in the user's input (audio or text).
+        2. Provide the 'summary', 'advice', 'recommendedAction', and 'specialistNeeded' fields IN THAT SAME DETECTED LANGUAGE.
+        3. Fill the 'detectedLanguage' field with the name of the language used.
+
         - Use simple, easy-to-understand language (Grade 6 reading level).
-        - Take the user's self-reported severity level (1-10) into serious consideration when determining the priority/severity classification.
+        - Consider the PATIENT PROFILE (Age, Gender, Conditions) heavily. For example, chest pain in an older person with heart history is higher risk than a teenager.
+        - Take the user's self-reported severity level (1-10) into serious consideration.
         - If the user provides a picture of a medication, explain what it is used for.
         - If the symptoms seem life-threatening (chest pain, severe bleeding, difficulty breathing), flag as EMERGENCY immediately.
-        - If severity is EMERGENCY, provide the likely local emergency contact number (e.g. 911, 112, 999) based on any location clues in the text/audio, or provide standard international ones (e.g. "112 or 911").
+        - If severity is EMERGENCY, provide the likely local emergency contact number.
         - Be culturally sensitive and supportive.
         - PRELIMINARY ADVICE ONLY. NOT A DIAGNOSIS.`,
         responseMimeType: "application/json",
@@ -95,8 +109,48 @@ export const analyzeSymptoms = async (
       summary: "Could not analyze symptoms due to connection error.",
       severity: "MEDIUM",
       advice: "Please consult a local health worker directly.",
-      recommendedAction: "See Doctor"
+      recommendedAction: "See Doctor",
+      detectedLanguage: "English"
     };
+  }
+};
+
+export const translateTriage = async (original: TriageResponse): Promise<TriageResponse> => {
+  try {
+    const prompt = `Translate the following JSON fields to English: summary, advice, recommendedAction, specialistNeeded. 
+    Keep severity, emergencyNumber and detectedLanguage as is.
+    
+    Input JSON:
+    ${JSON.stringify(original)}`;
+
+    const response = await ai.models.generateContent({
+      model: TRIAGE_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+             summary: { type: Type.STRING },
+             severity: { type: Type.STRING, enum: ['LOW', 'MEDIUM', 'HIGH', 'EMERGENCY'] },
+             advice: { type: Type.STRING },
+             recommendedAction: { type: Type.STRING },
+             specialistNeeded: { type: Type.STRING },
+             emergencyNumber: { type: Type.STRING },
+             detectedLanguage: { type: Type.STRING }
+          }
+        }
+      }
+    });
+    
+    const translated = JSON.parse(response.text || "{}");
+    // Ensure we keep the detected language tag of the original to know what we translated from, 
+    // or we can update it to "English" but for UI toggle "English" might be confusing if we use it to show "Translate to English".
+    // Let's keep the original detected language logic in UI state.
+    return { ...original, ...translated };
+  } catch (error) {
+    console.error("Translation Error", error);
+    return original;
   }
 };
 
@@ -153,10 +207,20 @@ export interface PlaceResult {
   openStatus?: string;
 }
 
-export const findNearbyDoctors = async (lat: number, lng: number, specialist?: string): Promise<{ text: string, places: PlaceResult[] }> => {
+export const findNearbyDoctors = async (
+  lat: number, 
+  lng: number, 
+  specialist?: string, 
+  radiusKm?: string,
+  openNow?: boolean
+): Promise<{ text: string, places: PlaceResult[] }> => {
   try {
+    const specialistTerm = specialist || 'general practitioner doctors';
+    const radiusText = radiusKm ? `within ${radiusKm} kilometers` : '';
+    const openNowText = openNow ? 'Only include locations that are currently OPEN.' : '';
+
     // We ask for a specific format in the text response to help us parse details that might not be in the grounding chunk metadata
-    const query = `Find ${specialist || 'general practitioner doctors'} and clinics near me. Sort them by distance. 
+    const query = `Find ${specialistTerm} and clinics near me ${radiusText}. ${openNowText} Sort them by distance. 
     Provide the result as a list. For each location, strictly follow this format:
     "Name: <name> // Distance: <distance> // Phone: <phone number> // Status: <Open Now/Closed/Hours>"
     Example: "City Clinic // 0.5 miles // 555-1234 // Open Now"`;

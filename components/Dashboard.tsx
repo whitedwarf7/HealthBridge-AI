@@ -1,14 +1,11 @@
 import React from 'react';
-import { AppView, Appointment } from '../types';
+import { AppView } from '../types';
 
 interface DashboardProps {
   onChangeView: (view: AppView) => void;
-  appointments: Appointment[];
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onChangeView, appointments }) => {
-  const nextAppointment = appointments.find(a => a.status === 'CONFIRMED');
-
+export const Dashboard: React.FC<DashboardProps> = ({ onChangeView }) => {
   return (
     <div className="p-4 space-y-6 pb-20">
       <header className="flex justify-between items-center mb-6">
@@ -44,53 +41,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onChangeView, appointments
         </div>
       </div>
 
-      {/* Quick Stats / Info */}
-      <div className="grid grid-cols-2 gap-4">
-        <div 
-          onClick={() => onChangeView(AppView.RECORDS)}
-          className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm cursor-pointer"
-        >
-          <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center mb-3">
-             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-          </div>
-          <h3 className="font-semibold text-gray-800">Records</h3>
-          <p className="text-xs text-gray-500 mt-1">Prescriptions & Labs</p>
+      {/* Secondary Actions */}
+      <div 
+        onClick={() => onChangeView(AppView.RECORDS)}
+        className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer flex items-center space-x-4 hover:border-teal-200 transition"
+      >
+        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
         </div>
-
-        <div 
-          onClick={() => onChangeView(AppView.APPOINTMENTS)}
-          className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm cursor-pointer"
-        >
-           <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center mb-3">
-             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          </div>
-          <h3 className="font-semibold text-gray-800">Schedule</h3>
-          <p className="text-xs text-gray-500 mt-1">Book a Doctor</p>
+        <div>
+          <h3 className="font-semibold text-gray-800 text-lg">My Health Records</h3>
+          <p className="text-sm text-gray-500">Manage prescriptions & lab reports</p>
         </div>
-      </div>
-
-      {/* Next Appointment Widget */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Upcoming</h3>
-        {nextAppointment ? (
-           <div className="flex items-center gap-4">
-             <div className="bg-teal-50 text-teal-700 flex flex-col items-center justify-center p-2 rounded-lg min-w-[60px]">
-               <span className="text-xs font-bold uppercase">{nextAppointment.date.toLocaleString('default', { month: 'short' })}</span>
-               <span className="text-xl font-bold">{nextAppointment.date.getDate()}</span>
-             </div>
-             <div>
-               <h4 className="font-semibold text-gray-800">{nextAppointment.doctorName}</h4>
-               <p className="text-sm text-gray-500">{nextAppointment.specialty}</p>
-               <p className="text-xs text-teal-600 font-medium mt-1">
-                 {nextAppointment.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-               </p>
-             </div>
-           </div>
-        ) : (
-          <div className="text-center py-4 text-gray-400 text-sm">
-            No upcoming appointments.
-          </div>
-        )}
       </div>
 
       {/* Tips Section */}

@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { HealthRecord } from '../types';
 import { analyzeHealthRecord } from '../services/geminiService';
 
 interface HealthRecordsProps {
   records: HealthRecord[];
   addRecord: (rec: HealthRecord) => void;
+  deleteRecord: (id: string) => void;
 }
 
-const HealthRecordItem: React.FC<{ record: HealthRecord }> = ({ record }) => {
+const HealthRecordItem: React.FC<{ record: HealthRecord; onDelete: (id: string) => void }> = ({ record, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -62,7 +63,7 @@ const HealthRecordItem: React.FC<{ record: HealthRecord }> = ({ record }) => {
 
            {/* Prescription Medicines Section */}
            {record.type === 'PRESCRIPTION' && record.medicines && record.medicines.length > 0 && (
-             <div>
+             <div className="mb-4">
                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center">
                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                  Medication Details
@@ -93,15 +94,32 @@ const HealthRecordItem: React.FC<{ record: HealthRecord }> = ({ record }) => {
                </div>
              </div>
            )}
+
+           {/* Delete Button */}
+           <div className="flex justify-end pt-2 border-t border-gray-100">
+             <button 
+               onClick={(e) => {
+                 e.stopPropagation();
+                 onDelete(record.id);
+               }}
+               className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center px-2 py-1 rounded hover:bg-red-50 transition"
+             >
+               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+               Delete Record
+             </button>
+           </div>
         </div>
       )}
     </div>
   );
 };
 
-export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord }) => {
+export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord, deleteRecord }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<'ALL' | 'PRESCRIPTION' | 'LAB_REPORT' | 'OTHER'>('ALL');
+  const [sortOrder, setSortOrder] = useState<'NEWEST' | 'OLDEST'>('NEWEST');
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -133,9 +151,56 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
     }
   };
 
+  const processedRecords = useMemo(() => {
+    let result = [...records];
+
+    // Filter
+    if (filterType !== 'ALL') {
+      result = result.filter(r => r.type === filterType);
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortOrder === 'NEWEST' ? dateB - dateA : dateA - dateB;
+    });
+
+    return result;
+  }, [records, filterType, sortOrder]);
+
   return (
-    <div className="p-4 min-h-full pb-20">
-       <header className="mb-6 flex justify-between items-center">
+    <div className="p-4 min-h-full pb-20 relative">
+       {/* Confirmation Modal */}
+       {recordToDelete && (
+         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl animate-fade-in">
+             <h3 className="font-bold text-lg mb-2 text-gray-800">Delete Record?</h3>
+             <p className="text-gray-600 mb-6 text-sm">Are you sure you want to delete <span className="font-semibold text-gray-800">"{records.find(r => r.id === recordToDelete)?.title}"</span>? This action cannot be undone.</p>
+             <div className="flex justify-end gap-3">
+               <button 
+                 onClick={() => setRecordToDelete(null)}
+                 className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg text-sm"
+               >
+                 Cancel
+               </button>
+               <button 
+                 onClick={() => {
+                   if (recordToDelete) {
+                     deleteRecord(recordToDelete);
+                     setRecordToDelete(null);
+                   }
+                 }}
+                 className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 text-sm shadow-sm"
+               >
+                 Delete
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
+
+       <header className="mb-4 flex justify-between items-center">
          <h1 className="text-2xl font-bold text-gray-800">My Records</h1>
          <button 
            onClick={() => setIsUploading(!isUploading)}
@@ -144,6 +209,44 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
            {isUploading ? 'Cancel' : '+ Add New'}
          </button>
        </header>
+
+        {/* Filter and Sort Controls */}
+       <div className="mb-6 flex flex-col gap-3">
+          {/* Type Filter Chips */}
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {[
+              { label: 'All', value: 'ALL' },
+              { label: 'Prescriptions', value: 'PRESCRIPTION' },
+              { label: 'Lab Reports', value: 'LAB_REPORT' },
+              { label: 'Other', value: 'OTHER' }
+            ].map((type) => (
+              <button
+                key={type.value}
+                onClick={() => setFilterType(type.value as any)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors border ${
+                  filterType === type.value
+                    ? 'bg-teal-600 text-white border-teal-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sort Toggle */}
+          <div className="flex justify-end">
+            <button 
+              onClick={() => setSortOrder(prev => prev === 'NEWEST' ? 'OLDEST' : 'NEWEST')}
+              className="flex items-center text-xs text-gray-500 font-medium hover:text-teal-600"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              </svg>
+              Sort: {sortOrder === 'NEWEST' ? 'Newest First' : 'Oldest First'}
+            </button>
+          </div>
+       </div>
 
        {/* Upload Area */}
        {isUploading && (
@@ -169,14 +272,14 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
 
        {/* List */}
        <div className="space-y-3">
-         {records.length === 0 ? (
+         {processedRecords.length === 0 ? (
            <div className="text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-gray-100 border-dashed">
-             <p>No records yet.</p>
-             <p className="text-sm mt-1">Tap "+ Add New" to scan a prescription.</p>
+             <p>No records found.</p>
+             <p className="text-sm mt-1">Adjust filters or tap "+ Add New" to add one.</p>
            </div>
          ) : (
-           records.map(rec => (
-             <HealthRecordItem key={rec.id} record={rec} />
+           processedRecords.map(rec => (
+             <HealthRecordItem key={rec.id} record={rec} onDelete={setRecordToDelete} />
            ))
          )}
        </div>
