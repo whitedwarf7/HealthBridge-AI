@@ -23,7 +23,11 @@ const MOCK_RECORDS: HealthRecord[] = [
     type: 'PRESCRIPTION',
     title: 'Amoxicillin 500mg',
     date: new Date('2023-10-15'),
-    summary: 'Antibiotic for bacterial infection. Take 3 times daily.'
+    summary: 'Antibiotic for bacterial infection. Take 3 times daily.',
+    medicines: [
+      { name: 'Amoxicillin', dosage: '500mg', frequency: '3 times daily', notes: 'Take with food to avoid upset stomach' },
+      { name: 'Ibuprofen', dosage: '400mg', frequency: 'As needed', notes: 'For fever/pain' }
+    ]
   }
 ];
 
@@ -52,10 +56,8 @@ const App: React.FC = () => {
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative">
         {renderView()}
         
-        {/* Only show nav on main pages, hide on Symptom Checker for full focus */}
-        {currentView !== AppView.SYMPTOM_CHECKER && (
-           <Navigation currentView={currentView} onChangeView={setCurrentView} />
-        )}
+        {/* Navigation is now always visible */}
+        <Navigation currentView={currentView} onChangeView={setCurrentView} />
       </div>
     </div>
   );

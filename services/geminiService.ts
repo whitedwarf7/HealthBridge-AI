@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { TriageResponse } from '../types';
+import { TriageResponse, HealthRecord } from '../types';
 
 // Initialize Gemini
 // NOTE: In a production environment for underserved regions, we would likely proxy this 
@@ -98,7 +98,7 @@ export const analyzeSymptoms = async (
   }
 };
 
-export const analyzeHealthRecord = async (imageBase64: string): Promise<{ title: string; summary: string; type: 'PRESCRIPTION' | 'LAB_REPORT' | 'OTHER' }> => {
+export const analyzeHealthRecord = async (imageBase64: string): Promise<Partial<HealthRecord>> => {
    const base64Data = imageBase64.split(',')[1] || imageBase64;
    
    try {
@@ -107,7 +107,7 @@ export const analyzeHealthRecord = async (imageBase64: string): Promise<{ title:
       contents: {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
-          { text: "Analyze this medical document image. Identify if it is a prescription, lab report, or other. Extract the title (e.g., 'Amoxicillin Prescription' or 'Blood Test Results') and a 1-sentence summary of key details." }
+          { text: "Analyze this medical document image. Identify if it is a prescription, lab report, or other. Extract the title (e.g., 'Amoxicillin Prescription' or 'Blood Test Results') and a 1-sentence summary of key details. If it is a PRESCRIPTION, extract the list of medicines including name, dosage, frequency, and specific notes." }
         ]
       },
       config: {
@@ -117,7 +117,19 @@ export const analyzeHealthRecord = async (imageBase64: string): Promise<{ title:
           properties: {
             title: { type: Type.STRING },
             summary: { type: Type.STRING },
-            type: { type: Type.STRING, enum: ['PRESCRIPTION', 'LAB_REPORT', 'OTHER'] }
+            type: { type: Type.STRING, enum: ['PRESCRIPTION', 'LAB_REPORT', 'OTHER'] },
+            medicines: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  dosage: { type: Type.STRING },
+                  frequency: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              }
+            }
           }
         }
       }

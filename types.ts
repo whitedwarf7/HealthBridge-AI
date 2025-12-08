@@ -15,6 +15,13 @@ export interface SymptomReport {
   category: string;
 }
 
+export interface Medicine {
+  name: string;
+  dosage: string;
+  frequency: string;
+  notes?: string;
+}
+
 export interface HealthRecord {
   id: string;
   type: 'PRESCRIPTION' | 'LAB_REPORT' | 'OTHER';
@@ -22,6 +29,7 @@ export interface HealthRecord {
   date: Date;
   imageUrl?: string;
   summary?: string;
+  medicines?: Medicine[];
 }
 
 export interface Appointment {
