@@ -59,7 +59,8 @@ export const analyzeSymptoms = async (
       severity: { type: Type.STRING, enum: ['LOW', 'MEDIUM', 'HIGH', 'EMERGENCY'], description: "The severity level of the symptoms." },
       advice: { type: Type.STRING, description: "Immediate self-care advice or next steps. Keep it simple and actionable." },
       recommendedAction: { type: Type.STRING, description: "One of: 'Home Care', 'Visit Pharmacy', 'See Doctor', 'Go to Hospital'." },
-      specialistNeeded: { type: Type.STRING, description: "If a doctor is needed, what kind? e.g. 'General Practitioner', 'Dermatologist'." }
+      specialistNeeded: { type: Type.STRING, description: "If a doctor is needed, what kind? e.g. 'General Practitioner', 'Dermatologist'." },
+      emergencyNumber: { type: Type.STRING, description: "The local emergency phone number (e.g. 911, 112, 999) if severity is EMERGENCY. Default to '112' if unknown." }
     },
     required: ["summary", "severity", "advice", "recommendedAction"],
   };
@@ -75,6 +76,7 @@ export const analyzeSymptoms = async (
         - Take the user's self-reported severity level (1-10) into serious consideration when determining the priority/severity classification.
         - If the user provides a picture of a medication, explain what it is used for.
         - If the symptoms seem life-threatening (chest pain, severe bleeding, difficulty breathing), flag as EMERGENCY immediately.
+        - If severity is EMERGENCY, provide the likely local emergency contact number (e.g. 911, 112, 999) based on any location clues in the text/audio, or provide standard international ones (e.g. "112 or 911").
         - Be culturally sensitive and supportive.
         - PRELIMINARY ADVICE ONLY. NOT A DIAGNOSIS.`,
         responseMimeType: "application/json",
@@ -148,6 +150,7 @@ export interface PlaceResult {
   distance?: string;
   phone?: string;
   address?: string;
+  openStatus?: string;
 }
 
 export const findNearbyDoctors = async (lat: number, lng: number, specialist?: string): Promise<{ text: string, places: PlaceResult[] }> => {
@@ -155,8 +158,8 @@ export const findNearbyDoctors = async (lat: number, lng: number, specialist?: s
     // We ask for a specific format in the text response to help us parse details that might not be in the grounding chunk metadata
     const query = `Find ${specialist || 'general practitioner doctors'} and clinics near me. Sort them by distance. 
     Provide the result as a list. For each location, strictly follow this format:
-    "Name: <name> // Distance: <distance> // Phone: <phone number>"
-    Example: "City Clinic // 0.5 miles // 555-1234"`;
+    "Name: <name> // Distance: <distance> // Phone: <phone number> // Status: <Open Now/Closed/Hours>"
+    Example: "City Clinic // 0.5 miles // 555-1234 // Open Now"`;
     
     const response = await ai.models.generateContent({
       model: TRIAGE_MODEL,
@@ -195,29 +198,29 @@ export const findNearbyDoctors = async (lat: number, lng: number, specialist?: s
       })
       .filter((p: any) => p !== null);
 
-    // 2. Parse the text response to get Distance and Phone (The model uses the tool to generate this text)
-    // We try to match the parsed text items with the raw chunks
+    // 2. Parse the text response to get Distance, Phone, and Open Status
     const lines = text.split('\n');
-    const parsedDetails: { name: string, distance: string, phone: string }[] = [];
+    const parsedDetails: { name: string, distance: string, phone: string, status: string }[] = [];
     
     lines.forEach(line => {
        const parts = line.split('//').map(s => s.trim());
        if (parts.length >= 2) {
-         // Attempt to find Name, Distance, Phone
+         // Attempt to find Name, Distance, Phone, Status
          const namePart = parts[0].replace(/Name:|^\d+\./gi, '').trim(); // Remove "Name:" or "1."
          const distPart = parts.find(p => p.toLowerCase().includes('distance:'))?.replace(/distance:/i, '').trim() || parts[1];
          const phonePart = parts.find(p => p.toLowerCase().includes('phone:'))?.replace(/phone:/i, '').trim() || parts[2] || '';
+         const statusPart = parts.find(p => p.toLowerCase().includes('status:'))?.replace(/status:/i, '').trim() || parts[3] || '';
          
          parsedDetails.push({
            name: namePart,
            distance: distPart,
-           phone: phonePart
+           phone: phonePart,
+           status: statusPart
          });
        }
     });
 
     // 3. Merge parsed details into raw places
-    // Matching strategy: Simple substring match or fuzzy match
     const mergedPlaces = parsedDetails.map(detail => {
        // Find a chunk that matches this name
        const match = rawPlaces.find(p => p.title.toLowerCase().includes(detail.name.toLowerCase()) || detail.name.toLowerCase().includes(p.title.toLowerCase()));
@@ -226,7 +229,8 @@ export const findNearbyDoctors = async (lat: number, lng: number, specialist?: s
          title: detail.name,
          uri: match ? match.uri : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(detail.name)}`, // Fallback URI
          distance: detail.distance,
-         phone: detail.phone
+         phone: detail.phone,
+         openStatus: detail.status
        };
     });
 

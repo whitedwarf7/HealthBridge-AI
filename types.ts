@@ -46,4 +46,5 @@ export interface TriageResponse {
   advice: string;
   recommendedAction: string;
   specialistNeeded?: string;
+  emergencyNumber?: string;
 }

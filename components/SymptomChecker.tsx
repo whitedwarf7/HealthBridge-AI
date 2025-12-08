@@ -203,8 +203,22 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
          </button>
          
          <div className={`p-4 rounded-xl border-2 mb-6 ${getSeverityColor(result.severity)}`}>
-            <h2 className="text-2xl font-bold mb-1">{result.recommendedAction}</h2>
-            <p className="text-sm opacity-90 uppercase tracking-wide font-bold">{result.severity} Priority</p>
+            <div className="flex justify-between items-start">
+               <div>
+                 <h2 className="text-2xl font-bold mb-1">{result.recommendedAction}</h2>
+                 <p className="text-sm opacity-90 uppercase tracking-wide font-bold">{result.severity} Priority</p>
+               </div>
+               
+               {result.severity === 'EMERGENCY' && (
+                 <a 
+                   href={`tel:${result.emergencyNumber || '112'}`}
+                   className="bg-red-600 text-white px-4 py-3 rounded-lg font-bold shadow-sm hover:bg-red-700 animate-bounce flex flex-col items-center"
+                 >
+                   <span className="text-[10px] uppercase">Call Emergency</span>
+                   <span className="text-lg leading-none">{result.emergencyNumber || '911/112'}</span>
+                 </a>
+               )}
+            </div>
          </div>
 
          <div className="space-y-6">
@@ -270,20 +284,36 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack }) => {
                     >
                       <div className="flex justify-between items-start">
                         <div className="font-bold text-gray-800">{place.title}</div>
-                        <div className="text-teal-600 text-xs font-medium flex items-center bg-teal-50 px-2 py-1 rounded-full">
-                           <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                           Map
-                        </div>
+                        
+                        {/* Status Badge */}
+                        {place.openStatus && (
+                          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                             place.openStatus.toLowerCase().includes('open') 
+                             ? 'bg-green-100 text-green-700' 
+                             : 'bg-red-100 text-red-700'
+                          }`}>
+                            {place.openStatus}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Distance and Phone */}
-                      <div className="mt-1 flex flex-col space-y-1">
-                        {place.distance && (
-                           <div className="flex items-center text-xs text-gray-500">
-                              <svg className="w-3 h-3 mr-1.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                              {place.distance}
+                      <div className="mt-2 flex flex-col space-y-1">
+                        <div className="flex justify-between items-center">
+                           {place.distance && (
+                              <div className="flex items-center text-xs text-gray-500">
+                                 <svg className="w-3 h-3 mr-1.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                                 {place.distance}
+                              </div>
+                           )}
+                           
+                           {/* Map Link Icon */}
+                           <div className="text-teal-600 text-xs font-medium flex items-center">
+                              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              Map
                            </div>
-                        )}
+                        </div>
+
                         {place.phone && (
                            <div className="flex items-center text-xs text-gray-500">
                               <svg className="w-3 h-3 mr-1.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
