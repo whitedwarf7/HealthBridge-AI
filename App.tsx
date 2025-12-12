@@ -118,6 +118,13 @@ const App: React.FC = () => {
     saveRecordsToDb(newRecords, user.id);
   };
 
+  const handleUpdateRecord = (updatedRecord: HealthRecord) => {
+    if (!user) return;
+    const newRecords = records.map(r => r.id === updatedRecord.id ? updatedRecord : r);
+    setRecords(newRecords);
+    saveRecordsToDb(newRecords, user.id);
+  };
+
   const handleDeleteRecord = (id: string) => {
     if (!user) return;
     const newRecords = records.filter(r => r.id !== id);
@@ -142,6 +149,7 @@ const App: React.FC = () => {
           <HealthRecords 
             records={records} 
             addRecord={handleAddRecord} 
+            updateRecord={handleUpdateRecord}
             deleteRecord={handleDeleteRecord}
           />
         );

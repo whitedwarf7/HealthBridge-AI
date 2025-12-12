@@ -1,140 +1,294 @@
 import React, { useState, useMemo } from 'react';
-import { HealthRecord } from '../types';
+import { HealthRecord, Medicine, Reminder } from '../types';
 import { analyzeHealthRecord } from '../services/geminiService';
 
 interface HealthRecordsProps {
   records: HealthRecord[];
   addRecord: (rec: HealthRecord) => void;
+  updateRecord: (rec: HealthRecord) => void;
   deleteRecord: (id: string) => void;
 }
 
-const HealthRecordItem: React.FC<{ record: HealthRecord; onDelete: (id: string) => void }> = ({ record, onDelete }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  // Determine if it is a PDF based on mimeType
-  const isPdf = record.mimeType === 'application/pdf';
+interface ReminderModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (time: string, frequency: 'DAILY' | 'TWICE_DAILY' | 'WEEKLY') => void;
+  medicineName: string;
+}
+
+const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, onSave, medicineName }) => {
+  const [time, setTime] = useState('08:00');
+  const [frequency, setFrequency] = useState<'DAILY' | 'TWICE_DAILY' | 'WEEKLY'>('DAILY');
+
+  if (!isOpen) return null;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-200">
-      <div 
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50"
-      >
-        <div className="flex flex-col gap-1">
-           <h3 className="font-bold text-gray-800 text-sm leading-tight">{record.title}</h3>
-           <div className="flex items-center text-xs text-gray-400">
-             <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-             {record.date.toLocaleDateString()}
-           </div>
+    <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl animate-fade-in">
+        <h3 className="font-bold text-lg mb-1 text-gray-800">Set Reminder</h3>
+        <p className="text-xs text-gray-500 mb-4">For {medicineName}</p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Time</label>
+            <input 
+              type="time" 
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg text-lg font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Frequency</label>
+            <select
+              value={frequency}
+              onChange={(e) => setFrequency(e.target.value as any)}
+              className="w-full p-2 border border-gray-300 rounded-lg bg-white"
+            >
+              <option value="DAILY">Daily</option>
+              <option value="TWICE_DAILY">Twice Daily</option>
+              <option value="WEEKLY">Weekly</option>
+            </select>
+          </div>
         </div>
-        
-        <div className="flex items-center gap-3">
-           <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide border ${
-             record.type === 'PRESCRIPTION' ? 'bg-teal-50 text-teal-700 border-teal-100' :
-             record.type === 'LAB_REPORT' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-             'bg-gray-100 text-gray-600 border-gray-200'
-           }`}>
-             {record.type.replace('_', ' ')}
-           </span>
-           <svg 
-             className={`w-4 h-4 text-gray-400 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} 
-             fill="none" 
-             stroke="currentColor" 
-             viewBox="0 0 24 24"
-           >
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-           </svg>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg text-sm"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={() => onSave(time, frequency)}
+            className="px-4 py-2 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 text-sm shadow-sm"
+          >
+            Save Reminder
+          </button>
         </div>
       </div>
-
-      {isExpanded && (
-        <div className="border-t border-gray-100 bg-white p-4 animate-fade-in">
-           {/* File Display Section */}
-           {record.imageUrl && (
-             <div className="mb-4 w-full rounded-lg bg-gray-50 overflow-hidden border border-gray-100">
-               {isPdf ? (
-                 <div className="p-6 flex flex-col items-center justify-center text-center">
-                   <svg className="w-12 h-12 text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                   <p className="text-sm font-semibold text-gray-800 mb-2">PDF Document</p>
-                   <a 
-                     href={record.imageUrl} 
-                     download={record.title + ".pdf"}
-                     className="text-blue-600 text-xs font-bold hover:underline bg-blue-50 px-3 py-2 rounded-full border border-blue-100"
-                   >
-                     Download / View PDF
-                   </a>
-                 </div>
-               ) : (
-                 <img src={record.imageUrl} alt="Record document" className="w-full h-48 object-contain" />
-               )}
-             </div>
-           )}
-           
-           {/* Summary Section */}
-           {record.summary && (
-             <div className="bg-blue-50/50 p-3 rounded-lg text-xs text-gray-700 leading-relaxed mb-4 border border-blue-100">
-               <div className="flex items-center gap-1.5 mb-1.5 pb-1.5 border-b border-blue-100">
-                 <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                 <span className="font-bold text-blue-800 uppercase text-[10px] tracking-wider">AI Summary</span>
-               </div>
-               <p>{record.summary}</p>
-             </div>
-           )}
-
-           {/* Prescription Medicines Section */}
-           {record.type === 'PRESCRIPTION' && record.medicines && record.medicines.length > 0 && (
-             <div className="mb-4">
-               <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center">
-                 <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                 Medication Details
-               </h4>
-               <div className="grid gap-3">
-                 {record.medicines.map((med, idx) => (
-                   <div key={idx} className="bg-teal-50 p-3 rounded-xl border border-teal-100 relative overflow-hidden">
-                     <div className="absolute top-0 right-0 w-16 h-16 bg-teal-100 rounded-bl-full opacity-20 -mr-8 -mt-8"></div>
-                     
-                     <div className="flex justify-between items-start relative z-10">
-                       <span className="font-bold text-gray-800 text-sm">{med.name}</span>
-                       <span className="text-[10px] bg-white px-2 py-1 rounded text-teal-700 font-bold border border-teal-100 shadow-sm">{med.dosage}</span>
-                     </div>
-                     
-                     <div className="text-gray-600 text-xs mt-2 font-medium flex items-center">
-                        <svg className="w-3 h-3 mr-1.5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        {med.frequency}
-                     </div>
-                     
-                     {med.notes && (
-                       <div className="mt-2 pt-2 border-t border-teal-100/50 text-[10px] text-gray-500 italic flex items-start">
-                         <svg className="w-3 h-3 mr-1 text-teal-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                         {med.notes}
-                       </div>
-                     )}
-                   </div>
-                 ))}
-               </div>
-             </div>
-           )}
-
-           {/* Delete Button */}
-           <div className="flex justify-end pt-2 border-t border-gray-100">
-             <button 
-               onClick={(e) => {
-                 e.stopPropagation();
-                 onDelete(record.id);
-               }}
-               className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center px-2 py-1 rounded hover:bg-red-50 transition"
-             >
-               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-               Delete Record
-             </button>
-           </div>
-        </div>
-      )}
     </div>
   );
 };
 
-export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord, deleteRecord }) => {
+const HealthRecordItem: React.FC<{ 
+  record: HealthRecord; 
+  onUpdate: (rec: HealthRecord) => void; 
+  onDelete: (id: string) => void 
+}> = ({ record, onUpdate, onDelete }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [activeMedIndex, setActiveMedIndex] = useState<number | null>(null);
+  
+  // Determine if it is a PDF based on mimeType
+  const isPdf = record.mimeType === 'application/pdf';
+
+  const handleAddReminder = (time: string, frequency: 'DAILY' | 'TWICE_DAILY' | 'WEEKLY') => {
+    if (activeMedIndex === null || !record.medicines) return;
+
+    // Create shallow copy of record
+    const updatedRecord = { ...record };
+    // Create copy of medicines array
+    updatedRecord.medicines = [...(updatedRecord.medicines || [])];
+    
+    // Get specific medicine
+    const med = { ...updatedRecord.medicines[activeMedIndex] };
+    // Initialize reminders if undefined
+    if (!med.reminders) med.reminders = [];
+    
+    // Add new reminder
+    med.reminders = [
+      ...med.reminders, 
+      { id: Date.now().toString(), time, frequency, enabled: true }
+    ];
+    
+    // Update medicine in array
+    updatedRecord.medicines[activeMedIndex] = med;
+    
+    // Propagate update
+    onUpdate(updatedRecord);
+    setActiveMedIndex(null); // Close modal
+    
+    // Request permission (pseudo-implementation)
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+  };
+
+  const handleRemoveReminder = (medIndex: number, reminderId: string) => {
+     if (!record.medicines) return;
+     const updatedRecord = { ...record };
+     updatedRecord.medicines = [...(updatedRecord.medicines || [])];
+     const med = { ...updatedRecord.medicines[medIndex] };
+     
+     med.reminders = med.reminders?.filter(r => r.id !== reminderId);
+     updatedRecord.medicines[medIndex] = med;
+     
+     onUpdate(updatedRecord);
+  };
+
+  return (
+    <>
+      <ReminderModal 
+        isOpen={activeMedIndex !== null}
+        onClose={() => setActiveMedIndex(null)}
+        onSave={handleAddReminder}
+        medicineName={activeMedIndex !== null && record.medicines ? record.medicines[activeMedIndex].name : ''}
+      />
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-200">
+        <div 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+        >
+          <div className="flex flex-col gap-1">
+             <h3 className="font-bold text-gray-800 text-sm leading-tight">{record.title}</h3>
+             <div className="flex items-center text-xs text-gray-400">
+               <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+               {record.date.toLocaleDateString()}
+             </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+             <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide border ${
+               record.type === 'PRESCRIPTION' ? 'bg-teal-50 text-teal-700 border-teal-100' :
+               record.type === 'LAB_REPORT' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+               'bg-gray-100 text-gray-600 border-gray-200'
+             }`}>
+               {record.type.replace('_', ' ')}
+             </span>
+             <svg 
+               className={`w-4 h-4 text-gray-400 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} 
+               fill="none" 
+               stroke="currentColor" 
+               viewBox="0 0 24 24"
+             >
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+             </svg>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="border-t border-gray-100 bg-white p-4 animate-fade-in">
+             {/* File Display Section */}
+             {record.imageUrl && (
+               <div className="mb-4 w-full rounded-lg bg-gray-50 overflow-hidden border border-gray-100">
+                 {isPdf ? (
+                   <div className="p-6 flex flex-col items-center justify-center text-center">
+                     <svg className="w-12 h-12 text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                     <p className="text-sm font-semibold text-gray-800 mb-2">PDF Document</p>
+                     <a 
+                       href={record.imageUrl} 
+                       download={record.title + ".pdf"}
+                       className="text-blue-600 text-xs font-bold hover:underline bg-blue-50 px-3 py-2 rounded-full border border-blue-100"
+                     >
+                       Download / View PDF
+                     </a>
+                   </div>
+                 ) : (
+                   <img src={record.imageUrl} alt="Record document" className="w-full h-48 object-contain" />
+                 )}
+               </div>
+             )}
+             
+             {/* Summary Section */}
+             {record.summary && (
+               <div className="bg-blue-50/50 p-3 rounded-lg text-xs text-gray-700 leading-relaxed mb-4 border border-blue-100">
+                 <div className="flex items-center gap-1.5 mb-1.5 pb-1.5 border-b border-blue-100">
+                   <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                   <span className="font-bold text-blue-800 uppercase text-[10px] tracking-wider">AI Summary</span>
+                 </div>
+                 <p>{record.summary}</p>
+               </div>
+             )}
+
+             {/* Prescription Medicines Section */}
+             {record.type === 'PRESCRIPTION' && record.medicines && record.medicines.length > 0 && (
+               <div className="mb-4">
+                 <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3 flex items-center">
+                   <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                   Medication Details
+                 </h4>
+                 <div className="grid gap-3">
+                   {record.medicines.map((med, idx) => (
+                     <div key={idx} className="bg-teal-50 p-3 rounded-xl border border-teal-100 relative overflow-hidden">
+                       <div className="absolute top-0 right-0 w-16 h-16 bg-teal-100 rounded-bl-full opacity-20 -mr-8 -mt-8"></div>
+                       
+                       <div className="flex justify-between items-start relative z-10">
+                         <span className="font-bold text-gray-800 text-sm">{med.name}</span>
+                         <span className="text-[10px] bg-white px-2 py-1 rounded text-teal-700 font-bold border border-teal-100 shadow-sm">{med.dosage}</span>
+                       </div>
+                       
+                       <div className="text-gray-600 text-xs mt-2 font-medium flex items-center">
+                          <svg className="w-3 h-3 mr-1.5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          {med.frequency}
+                       </div>
+                       
+                       {med.notes && (
+                         <div className="mt-2 pt-2 border-t border-teal-100/50 text-[10px] text-gray-500 italic flex items-start">
+                           <svg className="w-3 h-3 mr-1 text-teal-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                           {med.notes}
+                         </div>
+                       )}
+
+                       {/* Reminders List */}
+                       {med.reminders && med.reminders.length > 0 && (
+                         <div className="mt-3 space-y-2">
+                           {med.reminders.map(rem => (
+                             <div key={rem.id} className="flex items-center justify-between bg-white/60 p-2 rounded-lg border border-teal-200/50">
+                               <div className="flex items-center text-xs text-teal-800">
+                                 <svg className="w-3.5 h-3.5 mr-1.5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                 <span className="font-semibold">{rem.time}</span>
+                                 <span className="ml-1 opacity-75 capitalize text-[10px]">• {rem.frequency.replace('_', ' ').toLowerCase()}</span>
+                               </div>
+                               <button 
+                                 onClick={() => handleRemoveReminder(idx, rem.id)}
+                                 className="text-red-400 hover:text-red-600"
+                               >
+                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                               </button>
+                             </div>
+                           ))}
+                         </div>
+                       )}
+
+                       {/* Add Reminder Button */}
+                       <div className="mt-3 pt-2 border-t border-teal-100/50">
+                         <button 
+                            onClick={() => setActiveMedIndex(idx)}
+                            className="text-xs font-semibold text-teal-600 flex items-center hover:text-teal-800 transition"
+                         >
+                           <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                           Set Reminder
+                         </button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             )}
+
+             {/* Delete Button */}
+             <div className="flex justify-end pt-2 border-t border-gray-100">
+               <button 
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   onDelete(record.id);
+                 }}
+                 className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center px-2 py-1 rounded hover:bg-red-50 transition"
+               >
+                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                 Delete Record
+               </button>
+             </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord, updateRecord, deleteRecord }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
@@ -300,7 +454,12 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
            </div>
          ) : (
            processedRecords.map(rec => (
-             <HealthRecordItem key={rec.id} record={rec} onDelete={setRecordToDelete} />
+             <HealthRecordItem 
+               key={rec.id} 
+               record={rec} 
+               onUpdate={updateRecord}
+               onDelete={setRecordToDelete} 
+             />
            ))
          )}
        </div>

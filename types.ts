@@ -29,11 +29,19 @@ export interface SymptomReport {
   category: string;
 }
 
+export interface Reminder {
+  id: string;
+  time: string; // Format "HH:mm"
+  frequency: 'DAILY' | 'TWICE_DAILY' | 'WEEKLY';
+  enabled: boolean;
+}
+
 export interface Medicine {
   name: string;
   dosage: string;
   frequency: string;
   notes?: string;
+  reminders?: Reminder[];
 }
 
 export interface HealthRecord {
