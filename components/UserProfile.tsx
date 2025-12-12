@@ -4,9 +4,10 @@ import { UserProfile } from '../types';
 interface UserProfileProps {
   profile: UserProfile;
   onSave: (profile: UserProfile) => void;
+  onLogout: () => void;
 }
 
-export const UserProfileView: React.FC<UserProfileProps> = ({ profile, onSave }) => {
+export const UserProfileView: React.FC<UserProfileProps> = ({ profile, onSave, onLogout }) => {
   const [formData, setFormData] = useState<UserProfile>(profile);
   const [saved, setSaved] = useState(false);
 
@@ -131,6 +132,14 @@ export const UserProfileView: React.FC<UserProfileProps> = ({ profile, onSave })
               Saved Successfully
             </>
           ) : 'Save Profile'}
+        </button>
+
+        <button 
+          type="button"
+          onClick={onLogout}
+          className="w-full bg-white text-gray-600 font-bold py-3 rounded-xl border border-gray-300 hover:bg-gray-50 transition"
+        >
+          Sign Out
         </button>
       </form>
     </div>

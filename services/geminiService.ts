@@ -1,12 +1,9 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { TriageResponse, HealthRecord, UserProfile } from '../types';
 
-// Initialize Gemini
-// NOTE: In a production environment for underserved regions, we would likely proxy this 
-// through a backend to protect the key and manage rate limits.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+// Constants
 const TRIAGE_MODEL = 'gemini-2.5-flash';
+const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 
 export const analyzeSymptoms = async (
   textInput: string, 
@@ -15,6 +12,8 @@ export const analyzeSymptoms = async (
   severityLevel: number = 0,
   userProfile?: UserProfile
 ): Promise<TriageResponse> => {
+  // Initialize AI client per request to ensure latest API key
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const parts: any[] = [];
 
@@ -116,12 +115,19 @@ export const analyzeSymptoms = async (
 };
 
 export const translateTriage = async (original: TriageResponse): Promise<TriageResponse> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
-    const prompt = `Translate the following JSON fields to English: summary, advice, recommendedAction, specialistNeeded. 
-    Keep severity, emergencyNumber and detectedLanguage as is.
-    
-    Input JSON:
-    ${JSON.stringify(original)}`;
+    // Optimization: Only translate specific text fields to reduce token usage and latency.
+    const contentToTranslate = {
+      summary: original.summary,
+      advice: original.advice,
+      recommendedAction: original.recommendedAction,
+      specialistNeeded: original.specialistNeeded || "General Practitioner" // Default to ensure schema validity
+    };
+
+    const prompt = `Translate the values of this JSON object to English. 
+    Source:
+    ${JSON.stringify(contentToTranslate)}`;
 
     const response = await ai.models.generateContent({
       model: TRIAGE_MODEL,
@@ -132,38 +138,80 @@ export const translateTriage = async (original: TriageResponse): Promise<TriageR
           type: Type.OBJECT,
           properties: {
              summary: { type: Type.STRING },
-             severity: { type: Type.STRING, enum: ['LOW', 'MEDIUM', 'HIGH', 'EMERGENCY'] },
              advice: { type: Type.STRING },
              recommendedAction: { type: Type.STRING },
              specialistNeeded: { type: Type.STRING },
-             emergencyNumber: { type: Type.STRING },
-             detectedLanguage: { type: Type.STRING }
           }
         }
       }
     });
     
     const translated = JSON.parse(response.text || "{}");
-    // Ensure we keep the detected language tag of the original to know what we translated from, 
-    // or we can update it to "English" but for UI toggle "English" might be confusing if we use it to show "Translate to English".
-    // Let's keep the original detected language logic in UI state.
-    return { ...original, ...translated };
+    
+    return {
+      ...original,
+      summary: translated.summary || original.summary,
+      advice: translated.advice || original.advice,
+      recommendedAction: translated.recommendedAction || original.recommendedAction,
+      specialistNeeded: original.specialistNeeded ? translated.specialistNeeded : undefined, // Keep logic consistent
+      detectedLanguage: "English"
+    };
   } catch (error) {
     console.error("Translation Error", error);
-    return original;
+    throw error;
   }
 };
 
-export const analyzeHealthRecord = async (imageBase64: string): Promise<Partial<HealthRecord>> => {
-   const base64Data = imageBase64.split(',')[1] || imageBase64;
+export const generateTts = async (text: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  try {
+    const response = await ai.models.generateContent({
+      model: TTS_MODEL,
+      contents: { parts: [{ text }] },
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
+          },
+        },
+      },
+    });
+
+    const base64Data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Data) throw new Error("No audio generated");
+    return base64Data;
+  } catch (error) {
+    console.error("TTS Service Error:", error);
+    throw error;
+  }
+};
+
+export const analyzeHealthRecord = async (fileDataUrl: string): Promise<Partial<HealthRecord>> => {
+   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+   
+   // Extract mime type and base64 data using regex to handle both images and PDFs properly
+   // Expected format: data:<mimeType>;base64,<data>
+   const matches = fileDataUrl.match(/^data:(.+);base64,(.+)$/);
+   
+   let mimeType = 'image/jpeg'; // Default fallback
+   let base64Data = fileDataUrl;
+
+   if (matches && matches.length === 3) {
+       mimeType = matches[1];
+       base64Data = matches[2];
+   } else {
+       // Fallback for raw base64 or legacy inputs
+       base64Data = fileDataUrl.split(',')[1] || fileDataUrl;
+   }
    
    try {
     const response = await ai.models.generateContent({
       model: TRIAGE_MODEL,
       contents: {
         parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
-          { text: "Analyze this medical document image. Identify if it is a prescription, lab report, or other. Extract the title (e.g., 'Amoxicillin Prescription' or 'Blood Test Results') and a 1-sentence summary of key details. If it is a PRESCRIPTION, extract the list of medicines including name, dosage, frequency, and specific notes." }
+          { inlineData: { mimeType: mimeType, data: base64Data } },
+          { text: "Analyze this medical document (image or PDF). Identify if it is a prescription, lab report, or other. Extract the title (e.g., 'Amoxicillin Prescription' or 'Blood Test Results') and a 1-sentence summary of key details. If it is a PRESCRIPTION, extract the list of medicines including name, dosage, frequency, and specific notes." }
         ]
       },
       config: {
@@ -214,12 +262,12 @@ export const findNearbyDoctors = async (
   radiusKm?: string,
   openNow?: boolean
 ): Promise<{ text: string, places: PlaceResult[] }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const specialistTerm = specialist || 'general practitioner doctors';
     const radiusText = radiusKm ? `within ${radiusKm} kilometers` : '';
     const openNowText = openNow ? 'Only include locations that are currently OPEN.' : '';
 
-    // We ask for a specific format in the text response to help us parse details that might not be in the grounding chunk metadata
     const query = `Find ${specialistTerm} and clinics near me ${radiusText}. ${openNowText} Sort them by distance. 
     Provide the result as a list. For each location, strictly follow this format:
     "Name: <name> // Distance: <distance> // Phone: <phone number> // Status: <Open Now/Closed/Hours>"
@@ -244,7 +292,6 @@ export const findNearbyDoctors = async (
     const text = response.text || "Here are some locations nearby.";
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     
-    // 1. Extract base places from Grounding Chunks (reliable for URIs and Titles)
     const rawPlaces: PlaceResult[] = chunks
       .map((chunk: any) => {
         if (chunk.maps) {
@@ -262,15 +309,13 @@ export const findNearbyDoctors = async (
       })
       .filter((p: any) => p !== null);
 
-    // 2. Parse the text response to get Distance, Phone, and Open Status
     const lines = text.split('\n');
     const parsedDetails: { name: string, distance: string, phone: string, status: string }[] = [];
     
     lines.forEach(line => {
        const parts = line.split('//').map(s => s.trim());
        if (parts.length >= 2) {
-         // Attempt to find Name, Distance, Phone, Status
-         const namePart = parts[0].replace(/Name:|^\d+\./gi, '').trim(); // Remove "Name:" or "1."
+         const namePart = parts[0].replace(/Name:|^\d+\./gi, '').trim();
          const distPart = parts.find(p => p.toLowerCase().includes('distance:'))?.replace(/distance:/i, '').trim() || parts[1];
          const phonePart = parts.find(p => p.toLowerCase().includes('phone:'))?.replace(/phone:/i, '').trim() || parts[2] || '';
          const statusPart = parts.find(p => p.toLowerCase().includes('status:'))?.replace(/status:/i, '').trim() || parts[3] || '';
@@ -284,21 +329,18 @@ export const findNearbyDoctors = async (
        }
     });
 
-    // 3. Merge parsed details into raw places
     const mergedPlaces = parsedDetails.map(detail => {
-       // Find a chunk that matches this name
        const match = rawPlaces.find(p => p.title.toLowerCase().includes(detail.name.toLowerCase()) || detail.name.toLowerCase().includes(p.title.toLowerCase()));
        
        return {
          title: detail.name,
-         uri: match ? match.uri : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(detail.name)}`, // Fallback URI
+         uri: match ? match.uri : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(detail.name)}`,
          distance: detail.distance,
          phone: detail.phone,
          openStatus: detail.status
        };
     });
 
-    // Fallback: If parsing failed completely (e.g. model didn't follow format), return raw chunks
     const finalPlaces = mergedPlaces.length > 0 ? mergedPlaces : rawPlaces;
 
     return { text, places: finalPlaces };

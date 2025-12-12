@@ -1,20 +1,29 @@
 import React from 'react';
-import { AppView } from '../types';
+import { AppView, AuthUser } from '../types';
 
 interface DashboardProps {
   onChangeView: (view: AppView) => void;
+  user?: AuthUser | null;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onChangeView }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onChangeView, user }) => {
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  };
+
   return (
     <div className="p-4 space-y-6 pb-20 min-h-full flex flex-col">
       <header className="flex justify-between items-center mb-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">HealthBridge</h1>
-          <p className="text-gray-500 text-sm">Your personal health assistant</p>
+          <p className="text-gray-500 text-sm">Hello, {user?.name.split(' ')[0] || 'Guest'}</p>
         </div>
-        <div className="h-10 w-10 bg-teal-100 rounded-full flex items-center justify-center text-teal-700 font-bold border-2 border-white shadow-sm">
-          JD
+        <div className="h-10 w-10 bg-teal-100 rounded-full flex items-center justify-center text-teal-700 font-bold border-2 border-white shadow-sm overflow-hidden">
+          {user?.photoUrl ? (
+            <img src={user.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+          ) : (
+            <span>{user ? getInitials(user.name) : 'G'}</span>
+          )}
         </div>
       </header>
 

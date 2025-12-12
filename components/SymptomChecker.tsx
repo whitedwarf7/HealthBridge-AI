@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { analyzeSymptoms, findNearbyDoctors, PlaceResult, translateTriage } from '../services/geminiService';
+import { analyzeSymptoms, findNearbyDoctors, PlaceResult, translateTriage, generateTts } from '../services/geminiService';
 import { TriageResponse, UserProfile } from '../types';
 
 interface SymptomCheckerProps {
@@ -25,6 +25,9 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
 
   // Text to Speech State
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   // Computed current result based on toggle
   const result = isTranslated && translatedResult ? translatedResult : originalResult;
@@ -49,7 +52,10 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
         audioPlayerRef.current.pause();
         audioPlayerRef.current = null;
       }
-      window.speechSynthesis.cancel(); // Stop TTS
+      stopTts();
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
     };
   }, []);
 
@@ -174,9 +180,7 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
   };
 
   const handleTranslate = async () => {
-    // Stop any speaking when translating
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    stopTts();
 
     if (isTranslated) {
       // Revert to original
@@ -205,43 +209,86 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
     }
   };
 
-  const getLanguageCode = (langName?: string) => {
-    if (!langName) return 'en-US';
-    const map: Record<string, string> = {
-      'spanish': 'es-ES',
-      'french': 'fr-FR',
-      'hindi': 'hi-IN',
-      'german': 'de-DE',
-      'chinese': 'zh-CN',
-      'italian': 'it-IT',
-      'japanese': 'ja-JP',
-      'portuguese': 'pt-BR'
-    };
-    return map[langName.toLowerCase()] || 'en-US';
+  // --- Enhanced TTS with Gemini ---
+  const stopTts = () => {
+    if (audioSourceRef.current) {
+        try {
+            audioSourceRef.current.stop();
+        } catch(e) {}
+        audioSourceRef.current = null;
+    }
+    setIsSpeaking(false);
   };
 
-  const handleReadAloud = () => {
+  const playRawAudio = async (base64String: string) => {
+    try {
+        const binaryString = atob(base64String);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Initialize AudioContext if not exists
+        if (!audioContextRef.current) {
+             audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+        }
+        const ctx = audioContextRef.current;
+        
+        // Ensure context is running (mobile browsers suspend it)
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+
+        // Convert PCM 16-bit int to float32
+        const dataInt16 = new Int16Array(bytes.buffer);
+        const numChannels = 1;
+        const sampleRate = 24000; // Gemini TTS default
+        const frameCount = dataInt16.length / numChannels;
+        
+        const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+        const channelData = buffer.getChannelData(0);
+        for (let i = 0; i < frameCount; i++) {
+             // Normalize to -1.0 to 1.0
+             channelData[i] = dataInt16[i] / 32768.0;
+        }
+        
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.onended = () => setIsSpeaking(false);
+        source.start();
+        audioSourceRef.current = source;
+        setIsSpeaking(true);
+
+    } catch (e) {
+        console.error("Audio playback error", e);
+        alert("Could not play high-quality audio.");
+        setIsSpeaking(false);
+    }
+  };
+
+  const handleReadAloud = async () => {
     if (isSpeaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+      stopTts();
       return;
     }
 
     if (!result) return;
-
-    const textToRead = `Summary. ${result.summary}. Advice. ${result.advice}`;
-    const utterance = new SpeechSynthesisUtterance(textToRead);
     
-    // Attempt to set language
-    if (result.detectedLanguage) {
-      utterance.lang = getLanguageCode(result.detectedLanguage);
+    setIsGeneratingAudio(true);
+    try {
+      // Include summary and advice in the speech
+      const textToRead = `Summary: ${result.summary}. Advice: ${result.advice}`;
+      const base64Data = await generateTts(textToRead);
+      await playRawAudio(base64Data);
+    } catch (e) {
+      console.error(e);
+      alert("Unable to generate audio. Please check your connection.");
+      setIsSpeaking(false);
+    } finally {
+      setIsGeneratingAudio(false);
     }
-    
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    
-    window.speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
   };
 
   const reset = () => {
@@ -249,8 +296,8 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
       audioPlayerRef.current.pause();
       audioPlayerRef.current = null;
     }
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    stopTts();
+    
     setText('');
     setSeverity(5);
     setAudioBlob(null);
@@ -307,7 +354,6 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
       }
     };
     
-    // Check if detected language is not English to show button, or always show for safety.
     const showTranslateButton = originalResult.detectedLanguage && originalResult.detectedLanguage.toLowerCase() !== 'english';
 
     return (
@@ -356,13 +402,22 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
                 <h3 className="font-semibold text-gray-900">Advice</h3>
                 <button 
                   onClick={handleReadAloud}
+                  disabled={isGeneratingAudio}
                   className={`flex items-center space-x-1 text-xs font-bold px-3 py-1.5 rounded-full transition ${
                     isSpeaking 
                       ? 'bg-red-100 text-red-600' 
                       : 'bg-teal-100 text-teal-700 hover:bg-teal-200'
-                  }`}
+                  } ${isGeneratingAudio ? 'opacity-70 cursor-wait' : ''}`}
                 >
-                  {isSpeaking ? (
+                  {isGeneratingAudio ? (
+                    <>
+                       <svg className="animate-spin h-4 w-4 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                       </svg>
+                       <span>Generating...</span>
+                    </>
+                  ) : isSpeaking ? (
                     <>
                       <svg className="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
                       <span>Stop</span>
@@ -370,7 +425,7 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
                   ) : (
                     <>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-                      <span>Read Out Loud</span>
+                      <span>Listen</span>
                     </>
                   )}
                 </button>

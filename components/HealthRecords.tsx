@@ -10,6 +10,9 @@ interface HealthRecordsProps {
 
 const HealthRecordItem: React.FC<{ record: HealthRecord; onDelete: (id: string) => void }> = ({ record, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Determine if it is a PDF based on mimeType
+  const isPdf = record.mimeType === 'application/pdf';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-200">
@@ -46,18 +49,35 @@ const HealthRecordItem: React.FC<{ record: HealthRecord; onDelete: (id: string) 
 
       {isExpanded && (
         <div className="border-t border-gray-100 bg-white p-4 animate-fade-in">
-           {/* Image Section */}
+           {/* File Display Section */}
            {record.imageUrl && (
-             <div className="mb-4 w-full h-48 rounded-lg bg-gray-50 overflow-hidden border border-gray-100">
-               <img src={record.imageUrl} alt="Record document" className="w-full h-full object-contain" />
+             <div className="mb-4 w-full rounded-lg bg-gray-50 overflow-hidden border border-gray-100">
+               {isPdf ? (
+                 <div className="p-6 flex flex-col items-center justify-center text-center">
+                   <svg className="w-12 h-12 text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                   <p className="text-sm font-semibold text-gray-800 mb-2">PDF Document</p>
+                   <a 
+                     href={record.imageUrl} 
+                     download={record.title + ".pdf"}
+                     className="text-blue-600 text-xs font-bold hover:underline bg-blue-50 px-3 py-2 rounded-full border border-blue-100"
+                   >
+                     Download / View PDF
+                   </a>
+                 </div>
+               ) : (
+                 <img src={record.imageUrl} alt="Record document" className="w-full h-48 object-contain" />
+               )}
              </div>
            )}
            
            {/* Summary Section */}
            {record.summary && (
-             <div className="bg-gray-50 p-3 rounded-lg text-xs text-gray-600 leading-relaxed mb-4 border border-gray-100">
-               <span className="font-bold text-gray-800 block mb-1">AI Summary:</span>
-               {record.summary}
+             <div className="bg-blue-50/50 p-3 rounded-lg text-xs text-gray-700 leading-relaxed mb-4 border border-blue-100">
+               <div className="flex items-center gap-1.5 mb-1.5 pb-1.5 border-b border-blue-100">
+                 <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                 <span className="font-bold text-blue-800 uppercase text-[10px] tracking-wider">AI Summary</span>
+               </div>
+               <p>{record.summary}</p>
              </div>
            )}
 
@@ -140,6 +160,7 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
           type: analysis.type || "OTHER",
           summary: analysis.summary,
           imageUrl: base64,
+          mimeType: file.type, // Store the mime type (e.g., application/pdf)
           medicines: analysis.medicines
         };
         
@@ -255,7 +276,7 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
               <div className="flex flex-col items-center py-4">
                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
                  <p className="text-blue-600 font-medium">Scanning document...</p>
-                 <p className="text-xs text-gray-400">Extracting medicine names & dates</p>
+                 <p className="text-xs text-gray-400">Processing images or PDFs</p>
               </div>
             ) : (
               <label className="cursor-pointer block">
@@ -263,8 +284,8 @@ export const HealthRecords: React.FC<HealthRecordsProps> = ({ records, addRecord
                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
                 </div>
                 <h3 className="font-semibold text-gray-700">Scan Prescription or Report</h3>
-                <p className="text-sm text-gray-400 mt-1">Tap to take a photo or upload</p>
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileUpload} />
+                <p className="text-sm text-gray-400 mt-1">Tap to select photo or PDF</p>
+                <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload} />
               </label>
             )}
          </div>

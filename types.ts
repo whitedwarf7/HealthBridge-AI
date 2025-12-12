@@ -5,6 +5,13 @@ export enum AppView {
   PROFILE = 'PROFILE'
 }
 
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  photoUrl?: string;
+}
+
 export interface UserProfile {
   name: string;
   age: string;
@@ -34,7 +41,8 @@ export interface HealthRecord {
   type: 'PRESCRIPTION' | 'LAB_REPORT' | 'OTHER';
   title: string;
   date: Date;
-  imageUrl?: string;
+  imageUrl?: string; // Stores Base64 Data URL
+  mimeType?: string; // 'image/jpeg', 'image/png', 'application/pdf', etc.
   summary?: string;
   medicines?: Medicine[];
 }
