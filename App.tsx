@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { SymptomChecker } from './components/SymptomChecker';
@@ -6,9 +6,24 @@ import { HealthRecords } from './components/HealthRecords';
 import { UserProfileView } from './components/UserProfile';
 import { AppView, HealthRecord, UserProfile } from './types';
 
+// Mock Data
+const MOCK_RECORDS: HealthRecord[] = [
+  {
+    id: '1',
+    type: 'PRESCRIPTION',
+    title: 'Amoxicillin 500mg',
+    date: new Date('2023-10-15'),
+    summary: 'Antibiotic for bacterial infection. Take 3 times daily.',
+    medicines: [
+      { name: 'Amoxicillin', dosage: '500mg', frequency: '3 times daily', notes: 'Take with food to avoid upset stomach' },
+      { name: 'Ibuprofen', dosage: '400mg', frequency: 'As needed', notes: 'For fever/pain' }
+    ]
+  }
+];
+
 const DEFAULT_PROFILE: UserProfile = {
-  name: '',
-  age: '',
+  name: 'John Doe',
+  age: '35',
   gender: 'Male',
   preExistingConditions: '',
   allergies: ''
@@ -16,39 +31,8 @@ const DEFAULT_PROFILE: UserProfile = {
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
-  
-  // Initialize from Local Storage
-  const [records, setRecords] = useState<HealthRecord[]>(() => {
-    const saved = localStorage.getItem('healthRecords');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Re-hydrate Date objects
-        return parsed.map((r: any) => ({
-            ...r,
-            date: new Date(r.date)
-        }));
-      } catch (e) {
-        console.error("Failed to parse records", e);
-        return [];
-      }
-    }
-    return [];
-  });
-
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('userProfile');
-    return saved ? JSON.parse(saved) : DEFAULT_PROFILE;
-  });
-
-  // Persistence Effects
-  useEffect(() => {
-    localStorage.setItem('healthRecords', JSON.stringify(records));
-  }, [records]);
-
-  useEffect(() => {
-    localStorage.setItem('userProfile', JSON.stringify(userProfile));
-  }, [userProfile]);
+  const [records, setRecords] = useState<HealthRecord[]>(MOCK_RECORDS);
+  const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_PROFILE);
 
   const handleDeleteRecord = (id: string) => {
     setRecords(prev => prev.filter(r => r.id !== id));

@@ -23,6 +23,9 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
   const [isTranslated, setIsTranslated] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
 
+  // Text to Speech State
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   // Computed current result based on toggle
   const result = isTranslated && translatedResult ? translatedResult : originalResult;
   
@@ -46,6 +49,7 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
         audioPlayerRef.current.pause();
         audioPlayerRef.current = null;
       }
+      window.speechSynthesis.cancel(); // Stop TTS
     };
   }, []);
 
@@ -170,6 +174,10 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
   };
 
   const handleTranslate = async () => {
+    // Stop any speaking when translating
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+
     if (isTranslated) {
       // Revert to original
       setIsTranslated(false);
@@ -197,12 +205,52 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
     }
   };
 
+  const getLanguageCode = (langName?: string) => {
+    if (!langName) return 'en-US';
+    const map: Record<string, string> = {
+      'spanish': 'es-ES',
+      'french': 'fr-FR',
+      'hindi': 'hi-IN',
+      'german': 'de-DE',
+      'chinese': 'zh-CN',
+      'italian': 'it-IT',
+      'japanese': 'ja-JP',
+      'portuguese': 'pt-BR'
+    };
+    return map[langName.toLowerCase()] || 'en-US';
+  };
+
+  const handleReadAloud = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    if (!result) return;
+
+    const textToRead = `Summary. ${result.summary}. Advice. ${result.advice}`;
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    
+    // Attempt to set language
+    if (result.detectedLanguage) {
+      utterance.lang = getLanguageCode(result.detectedLanguage);
+    }
+    
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+  };
+
   const reset = () => {
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
       audioPlayerRef.current = null;
     }
-    setIsPlaying(false);
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
     setText('');
     setSeverity(5);
     setAudioBlob(null);
@@ -304,22 +352,31 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
            </section>
 
            <section>
-             <h3 className="font-semibold text-gray-900 mb-2">Advice</h3>
-             <p className="text-gray-700 bg-gray-50 p-3 rounded-lg whitespace-pre-line">{result.advice}</p>
-           </section>
-
-           {/* Translation Link */}
-           {showTranslateButton && (
-             <div className="flex justify-start">
+             <div className="flex justify-between items-center mb-2">
+                <h3 className="font-semibold text-gray-900">Advice</h3>
                 <button 
-                  onClick={handleTranslate}
-                  disabled={isTranslating}
-                  className="text-sm text-teal-600 underline hover:text-teal-800 bg-transparent p-0 border-none cursor-pointer flex items-center"
+                  onClick={handleReadAloud}
+                  className={`flex items-center space-x-1 text-xs font-bold px-3 py-1.5 rounded-full transition ${
+                    isSpeaking 
+                      ? 'bg-red-100 text-red-600' 
+                      : 'bg-teal-100 text-teal-700 hover:bg-teal-200'
+                  }`}
                 >
-                  {isTranslating ? 'Translating...' : (isTranslated ? 'Show Original' : 'Translate to English')}
+                  {isSpeaking ? (
+                    <>
+                      <svg className="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                      <span>Read Out Loud</span>
+                    </>
+                  )}
                 </button>
              </div>
-           )}
+             <p className="text-gray-700 bg-gray-50 p-3 rounded-lg whitespace-pre-line">{result.advice}</p>
+           </section>
 
            {result.specialistNeeded && (
              <section>
@@ -329,6 +386,27 @@ export const SymptomChecker: React.FC<SymptomCheckerProps> = ({ onBack, userProf
                   {result.specialistNeeded}
                </div>
              </section>
+           )}
+
+           {/* Translation Button */}
+           {showTranslateButton && (
+             <div className="flex justify-center pt-2">
+                <button 
+                  onClick={handleTranslate}
+                  disabled={isTranslating}
+                  className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full text-sm font-bold flex items-center hover:bg-indigo-100 transition"
+                >
+                  {isTranslating ? (
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                  )}
+                  {isTranslated ? 'Show Original' : 'Translate to English'}
+                </button>
+             </div>
            )}
 
            <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
